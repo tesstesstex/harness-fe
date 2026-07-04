@@ -7,9 +7,60 @@
       "Bash(npx vitest:*)",
       "Bash(npx playwright:*)",
       "Bash(npx tsc:*)",
+      "Bash(npx prettier:*)",
       "Bash(git status:*)",
       "Bash(git diff:*)",
       "Bash(git log:*)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if ! codex login status 2>&1 | grep -q \"Logged in\"; then echo '{\"systemMessage\":\"⚠️ codex CLI が未認証です。実装委任のため codex login を実行してください。\"}'; fi",
+            "timeout": 10,
+            "statusMessage": "codex 認証を確認中"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "c=$(jq -r '.tool_input.command // \"\"'); case \"$c\" in *\"git commit\"*\"--no-verify\"*) echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"git commit --no-verify は禁止です。pre-commit フック(lint-staged)を必ず通してください。\"}}' ;; esac",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_response.filePath // .tool_input.file_path' | { read -r f; npx prettier --write --ignore-unknown \"$f\"; } 2>/dev/null || true",
+            "timeout": 30,
+            "statusMessage": "Prettier でフォーマット中"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PostToolUse\",\"additionalContext\":\"codex の実行が終了しました(バックグラウンドの場合は完了通知を待つこと)。完了後は git diff --stat で変更範囲を確認し、npm run check で検証してください。\"}}'",
+            "if": "Bash(codex exec *)",
+            "timeout": 5
+          }
+        ]
+      }
     ]
   }
 }
